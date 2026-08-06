@@ -5,8 +5,8 @@ After=network.target
 [Service]
 # Adjust these paths/user to match your install location and pi username
 User=pi
-WorkingDirectory=/home/pi/videofm
-ExecStart=/home/pi/videofm/venv/bin/python /home/pi/videofm/app.py
+WorkingDirectory=/home/pi/AV-Monitor
+ExecStart=/home/pi/AV-Monitor/launcher.sh
 Restart=on-failure
 RestartSec=3
 

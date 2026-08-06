@@ -1,16 +1,3 @@
-"""
-Simple Flask file manager + video player.
-
-Lists video files from ./recordings, plays them in a browser <video> tag,
-and offers a button to switch to a "default stream" (placeholder for a
-live feed you can wire up later, e.g. an RTSP/HLS re-stream from the Pi
-camera via mediamtx/ffmpeg).
-
-Run:
-    python app.py
-Then visit http://<pi-ip>:5000/
-"""
-
 import os
 from flask import Flask, render_template, send_from_directory, jsonify, abort
 
@@ -21,10 +8,8 @@ app = Flask(__name__)
 RECORDINGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
 ALLOWED_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov", ".avi"}
 
-# Placeholder for a default/live video stream. Point this at an HLS (.m3u8)
-# or direct video URL once you have one set up (e.g. mediamtx/ffmpeg
-# re-streaming the Pi camera). Leave empty to keep the button disabled.
-DEFAULT_STREAM_URL = ""
+# Link to AV input stream
+DEFAULT_STREAM_URL = "udp://127.0.0.1:1234"
 
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 

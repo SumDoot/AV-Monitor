@@ -4,28 +4,19 @@
 # so you can connect to it directly (e.g. from a phone) and reach the
 # Flask app at http://192.168.4.1:5000/ as a "setup page".
 #
-# Tested approach: hostapd + dnsmasq, static IP via dhcpcd.
-# Works on Raspberry Pi OS Bullseye/Buster (dhcpcd-based networking).
-#
-# NOTE: Raspberry Pi OS Bookworm switched to NetworkManager by default.
-# If `systemctl status dhcpcd` doesn't exist on your image, use nmcli
-# instead, e.g.:
-#   sudo nmcli device wifi hotspot ifname wlan0 ssid "PiSetup" password "12345678"
-# and skip the rest of this script.
-#
 # Run as root: sudo bash setup_ap.sh
 
 set -euo pipefail
 
 # ---- Configuration (edit these) --------------------------------------------
-AP_SSID="PiVideoSetup"
+AP_SSID="FPV Goggles"
 AP_PASSPHRASE="changeme123"   # min 8 chars
 AP_IFACE="wlan0"
 AP_IP="192.168.4.1"
 AP_SUBNET="192.168.4.0/24"
 DHCP_RANGE_START="192.168.4.10"
 DHCP_RANGE_END="192.168.4.50"
-COUNTRY_CODE="US"             # your 2-letter WiFi regulatory country code
+COUNTRY_CODE="LV"             # your 2-letter WiFi regulatory country code
 # -----------------------------------------------------------------------------
 
 if [[ $EUID -ne 0 ]]; then
