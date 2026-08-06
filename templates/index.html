@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recordings Player</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <header>
+    <h1>Recordings</h1>
+    <button id="liveBtn" class="live-btn" {% if not default_stream_url %}disabled title="No default stream configured (set DEFAULT_STREAM_URL in app.py)"{% endif %}>
+      &#9679; Live Stream
+    </button>
+  </header>
+
+  <section class="player-wrap">
+    <video id="player" controls></video>
+    <div id="nowPlaying" class="now-playing">No file selected</div>
+  </section>
+
+  <section class="list-wrap">
+    <div class="list-header">
+      <h2>Files <span id="fileCount">({{ files|length }})</span></h2>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+
+    <div id="fileList" class="file-list">
+      {% for f in files %}
+      <div class="file-row" data-name="{{ f.name }}">
+        <span class="file-name">{{ f.name }}</span>
+        <span class="file-size">{{ f.size_human }}</span>
+      </div>
+      {% else %}
+      <div class="empty">No video files found in /recordings</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <script>
+    const DEFAULT_STREAM_URL = {{ default_stream_url|tojson }};
+
+    const player = document.getElementById('player');
+    const nowPlaying = document.getElementById('nowPlaying');
+    const fileList = document.getElementById('fileList');
+    const liveBtn = document.getElementById('liveBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const fileCount = document.getElementById('fileCount');
+
+    function playFile(name) {
+      player.src = '/recordings/' + encodeURIComponent(name);
+      player.load();
+      player.play().catch(() => {});
+      nowPlaying.textContent = name;
+      document.querySelectorAll('.file-row').forEach(r =>
+        r.classList.toggle('active', r.dataset.name === name)
+      );
+    }
+
+    fileList.addEventListener('click', (e) => {
+      const row = e.target.closest('.file-row');
+      if (row) playFile(row.dataset.name);
+    });
+
+    liveBtn.addEventListener('click', () => {
+      if (!DEFAULT_STREAM_URL) return;
+      player.src = DEFAULT_STREAM_URL;
+      player.load();
+      player.play().catch(() => {});
+      nowPlaying.textContent = 'Live Stream';
+      document.querySelectorAll('.file-row').forEach(r => r.classList.remove('active'));
+    });
+
+    function humanSize(bytes) {
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let size = bytes, i = 0;
+      while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+      return (i === 0 ? size : size.toFixed(1)) + ' ' + units[i];
+    }
+
+    function renderFiles(files) {
+      fileList.innerHTML = '';
+      fileCount.textContent = `(${files.length})`;
+      if (files.length === 0) {
+        fileList.innerHTML = '<div class="empty">No video files found in /recordings</div>';
+        return;
+      }
+      for (const f of files) {
+        const row = document.createElement('div');
+        row.className = 'file-row';
+        row.dataset.name = f.name;
+        row.innerHTML = `<span class="file-name">${f.name}</span><span class="file-size">${f.size_human || humanSize(f.size)}</span>`;
+        fileList.appendChild(row);
+      }
+    }
+
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.textContent = 'Refreshing…';
+      try {
+        const res = await fetch('/api/files');
+        const files = await res.json();
+        renderFiles(files);
+      } finally {
+        refreshBtn.textContent = 'Refresh';
+      }
+    });
+  </script>
+</body>
+</html>

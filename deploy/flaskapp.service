@@ -1,0 +1,14 @@
+[Unit]
+Description=Video File Manager Flask App
+After=network.target
+
+[Service]
+# Adjust these paths/user to match your install location and pi username
+User=pi
+WorkingDirectory=/home/pi/videofm
+ExecStart=/home/pi/videofm/venv/bin/python /home/pi/videofm/app.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
