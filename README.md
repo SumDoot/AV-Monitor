@@ -1,6 +1,11 @@
 # FPV-spectator-DVR
 This is a project that takes an AV input from my FPV goggles and records it internally while also allowing others around you to watch by connecting to its wifi hotspot connection.
 
+# This project is currently unfinished and only contains the web interface for others to connect to
+Planned to be added soon:
+ - actually run it on the pi instead of a dev enviroment
+ - test and set up streaming from AV adapter and also recording it locally
+ - make a better looking and more functional UI
 
 ## Hardware
 It uses an OrangePi Zero 2W (since i could not get a Raspberry device...) as the main brain of the device. It has a AV to USB adapter added to it, i used some random one that i could get locally but others might work similarly :)
