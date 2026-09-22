@@ -1,0 +1,137 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #111;
+    color: #eee;
+    font-family: Arial, sans-serif;
+}
+
+#container {
+    width: min(1000px, 95vw);
+    margin: 30px auto;
+}
+
+#video-container {
+    background: black;
+    position: relative;
+}
+
+#video {
+    width: 100%;
+    display: block;
+}
+
+#controls {
+    margin-top: 15px;
+}
+
+#timeline-container {
+    position: relative;
+    height: 45px;
+    margin-top: 10px;
+}
+
+#timeline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 17px;
+    height: 10px;
+
+    background: #333;
+
+    cursor: pointer;
+}
+
+#quality-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 17px;
+    height: 10px;
+
+    pointer-events: none;
+
+    display: flex;
+}
+
+.quality-segment {
+    height: 100%;
+    flex: 1;
+}
+
+#position {
+    position: absolute;
+
+    top: 10px;
+
+    width: 4px;
+    height: 24px;
+
+    background: white;
+
+    transform: translateX(-2px);
+
+    pointer-events: none;
+}
+
+#live-marker {
+    position: absolute;
+
+    right: 0;
+
+    top: 5px;
+
+    height: 34px;
+
+    border-right: 2px solid white;
+
+    pointer-events: none;
+}
+
+#labels {
+    display: flex;
+    justify-content: space-between;
+
+    margin-top: 12px;
+
+    font-size: 13px;
+    color: #aaa;
+}
+
+#buttons {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    background: #333;
+    color: white;
+
+    border: 1px solid #555;
+
+    padding: 8px 15px;
+
+    cursor: pointer;
+}
+
+button:hover {
+    background: #444;
+}
+
+#status {
+    margin-top: 15px;
+
+    display: flex;
+    justify-content: space-between;
+
+    color: #aaa;
+}
+
+#signal {
+    font-weight: bold;
+}
