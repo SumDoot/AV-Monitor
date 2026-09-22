@@ -1,110 +1,483 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Recordings Player</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <meta charset="UTF-8">
+
+    <title>FPV DVR</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #111;
+            color: #eee;
+            font-family: Arial, sans-serif;
+        }
+
+        #container {
+            width: min(1000px, 95vw);
+            margin: 30px auto;
+        }
+
+        #video-container {
+            background: black;
+            position: relative;
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+        }
+
+        #controls {
+            margin-top: 15px;
+        }
+
+        #timeline-container {
+            position: relative;
+            height: 45px;
+            margin-top: 10px;
+        }
+
+        #timeline {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 17px;
+            height: 10px;
+
+            background: #333;
+
+            cursor: pointer;
+        }
+
+        #quality-bar {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 17px;
+            height: 10px;
+
+            pointer-events: none;
+
+            display: flex;
+        }
+
+        .quality-segment {
+            height: 100%;
+            flex: 1;
+        }
+
+        #position {
+            position: absolute;
+
+            top: 10px;
+
+            width: 4px;
+            height: 24px;
+
+            background: white;
+
+            transform: translateX(-2px);
+
+            pointer-events: none;
+        }
+
+        #live-marker {
+            position: absolute;
+
+            right: 0;
+
+            top: 5px;
+
+            height: 34px;
+
+            border-right: 2px solid white;
+
+            pointer-events: none;
+        }
+
+        #labels {
+            display: flex;
+            justify-content: space-between;
+
+            margin-top: 12px;
+
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        #buttons {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            background: #333;
+            color: white;
+
+            border: 1px solid #555;
+
+            padding: 8px 15px;
+
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        #status {
+            margin-top: 15px;
+
+            display: flex;
+            justify-content: space-between;
+
+            color: #aaa;
+        }
+
+        #signal {
+            font-weight: bold;
+        }
+
+    </style>
+
 </head>
+
 <body>
 
-  <header>
-    <h1>Recordings</h1>
-    <button id="liveBtn" class="live-btn" {% if not default_stream_url %}disabled title="No default stream configured (set DEFAULT_STREAM_URL in app.py)"{% endif %}>
-      &#9679; Live Stream
-    </button>
-  </header>
+<div id="container">
 
-  <section class="player-wrap">
-    <video id="player" controls></video>
-    <div id="nowPlaying" class="now-playing">No file selected</div>
-  </section>
+    <div id="video-container">
 
-  <section class="list-wrap">
-    <div class="list-header">
-      <h2>Files <span id="fileCount">({{ files|length }})</span></h2>
-      <button id="refreshBtn">Refresh</button>
+        <!--
+            Placeholder for now.
+
+            The next iteration will put the actual
+            segment playback here.
+        -->
+
+        <video id="video" controls></video>
+
     </div>
 
-    <div id="fileList" class="file-list">
-      {% for f in files %}
-      <div class="file-row" data-name="{{ f.name }}">
-        <span class="file-name">{{ f.name }}</span>
-        <span class="file-size">{{ f.size_human }}</span>
-      </div>
-      {% else %}
-      <div class="empty">No video files found in /recordings</div>
-      {% endfor %}
+
+    <div id="controls">
+
+        <div id="timeline-container">
+
+            <div id="timeline"></div>
+
+            <div id="quality-bar"></div>
+
+            <div id="position"></div>
+
+            <div id="live-marker"></div>
+
+        </div>
+
+
+        <div id="labels">
+
+            <span id="start-time">00:00</span>
+
+            <span id="current-time">00:00</span>
+
+            <span id="end-time">LIVE</span>
+
+        </div>
+
+
+        <div id="buttons">
+
+            <button onclick="goLive()">
+                LIVE
+            </button>
+
+            <button onclick="jumpBack(30)">
+                -30 sec
+            </button>
+
+            <button onclick="jumpBack(60)">
+                -1 min
+            </button>
+
+        </div>
+
+
+        <div id="status">
+
+            <span id="buffer-status">
+                Buffer: 0:00
+            </span>
+
+            <span id="signal">
+                Signal: --
+            </span>
+
+        </div>
+
     </div>
-  </section>
 
-  <script>
-    const DEFAULT_STREAM_URL = {{ default_stream_url|tojson }};
+</div>
 
-    const player = document.getElementById('player');
-    const nowPlaying = document.getElementById('nowPlaying');
-    const fileList = document.getElementById('fileList');
-    const liveBtn = document.getElementById('liveBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const fileCount = document.getElementById('fileCount');
 
-    function playFile(name) {
-      player.src = '/recordings/' + encodeURIComponent(name);
-      player.load();
-      player.play().catch(() => {});
-      nowPlaying.textContent = name;
-      document.querySelectorAll('.file-row').forEach(r =>
-        r.classList.toggle('active', r.dataset.name === name)
-      );
+<script>
+
+let bufferStart = 0;
+let bufferEnd = 0;
+let currentPosition = 0;
+
+
+/*
+ * ---------------------------------------------------------
+ * Utility
+ * ---------------------------------------------------------
+ */
+
+function formatTime(seconds)
+{
+    seconds = Math.max(0, Math.floor(seconds));
+
+    let hours = Math.floor(seconds / 3600);
+
+    seconds %= 3600;
+
+    let minutes = Math.floor(seconds / 60);
+
+    seconds %= 60;
+
+    if (hours > 0)
+    {
+        return (
+            hours + ":" +
+            String(minutes).padStart(2, "0") + ":" +
+            String(seconds).padStart(2, "0")
+        );
     }
 
-    fileList.addEventListener('click', (e) => {
-      const row = e.target.closest('.file-row');
-      if (row) playFile(row.dataset.name);
-    });
+    return (
+        String(minutes).padStart(2, "0") +
+        ":" +
+        String(seconds).padStart(2, "0")
+    );
+}
 
-    liveBtn.addEventListener('click', () => {
-      if (!DEFAULT_STREAM_URL) return;
-      player.src = DEFAULT_STREAM_URL;
-      player.load();
-      player.play().catch(() => {});
-      nowPlaying.textContent = 'Live Stream';
-      document.querySelectorAll('.file-row').forEach(r => r.classList.remove('active'));
-    });
 
-    function humanSize(bytes) {
-      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-      let size = bytes, i = 0;
-      while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
-      return (i === 0 ? size : size.toFixed(1)) + ' ' + units[i];
+/*
+ * ---------------------------------------------------------
+ * Quality color
+ * ---------------------------------------------------------
+ */
+
+function qualityColor(value)
+{
+    value = Math.max(0, Math.min(1, value));
+
+    /*
+     * Red → yellow → green
+     */
+
+    let hue = value * 120;
+
+    return `hsl(${hue}, 80%, 45%)`;
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * Update buffer
+ * ---------------------------------------------------------
+ */
+
+async function updateBuffer()
+{
+    try
+    {
+        let response =
+            await fetch("/api/buffer");
+
+        let data =
+            await response.json();
+
+        bufferStart = data.start;
+        bufferEnd = data.end;
+
+        document.getElementById(
+            "buffer-status"
+        ).textContent =
+            "Buffer: " +
+            formatTime(data.duration);
+
+        drawQualityBar(data.segments);
+
+        updatePosition();
+
     }
+    catch (error)
+    {
+        console.error(error);
+    }
+}
 
-    function renderFiles(files) {
-      fileList.innerHTML = '';
-      fileCount.textContent = `(${files.length})`;
-      if (files.length === 0) {
-        fileList.innerHTML = '<div class="empty">No video files found in /recordings</div>';
+
+/*
+ * ---------------------------------------------------------
+ * Draw signal-quality timeline
+ * ---------------------------------------------------------
+ */
+
+function drawQualityBar(segments)
+{
+    let bar =
+        document.getElementById("quality-bar");
+
+    bar.innerHTML = "";
+
+    for (let segment of segments)
+    {
+        let element =
+            document.createElement("div");
+
+        element.className =
+            "quality-segment";
+
+        element.style.background =
+            qualityColor(segment.quality);
+
+        bar.appendChild(element);
+    }
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * Timeline position
+ * ---------------------------------------------------------
+ */
+
+function updatePosition()
+{
+    let timeline =
+        document.getElementById("timeline");
+
+    let position =
+        document.getElementById("position");
+
+    let duration =
+        bufferEnd - bufferStart;
+
+    if (duration <= 0)
         return;
-      }
-      for (const f of files) {
-        const row = document.createElement('div');
-        row.className = 'file-row';
-        row.dataset.name = f.name;
-        row.innerHTML = `<span class="file-name">${f.name}</span><span class="file-size">${f.size_human || humanSize(f.size)}</span>`;
-        fileList.appendChild(row);
-      }
-    }
 
-    refreshBtn.addEventListener('click', async () => {
-      refreshBtn.textContent = 'Refreshing…';
-      try {
-        const res = await fetch('/api/files');
-        const files = await res.json();
-        renderFiles(files);
-      } finally {
-        refreshBtn.textContent = 'Refresh';
-      }
-    });
-  </script>
+    let percentage =
+        (currentPosition - bufferStart)
+        / duration;
+
+    percentage =
+        Math.max(0, Math.min(1, percentage));
+
+    position.style.left =
+        `${percentage * 100}%`;
+
+    document.getElementById(
+        "current-time"
+    ).textContent =
+        formatTime(currentPosition - bufferStart);
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * Timeline click
+ * ---------------------------------------------------------
+ */
+
+document
+    .getElementById("timeline")
+    .addEventListener("click", function(event)
+{
+    if (bufferEnd <= bufferStart)
+        return;
+
+    let rect =
+        this.getBoundingClientRect();
+
+    let percentage =
+        (event.clientX - rect.left)
+        / rect.width;
+
+    percentage =
+        Math.max(0, Math.min(1, percentage));
+
+    currentPosition =
+        bufferStart +
+        percentage * (bufferEnd - bufferStart);
+
+    updatePosition();
+
+    /*
+     * Actual video seeking will be added
+     * once we switch to browser-friendly
+     * segmented video.
+     */
+});
+
+
+/*
+ * ---------------------------------------------------------
+ * LIVE
+ * ---------------------------------------------------------
+ */
+
+function goLive()
+{
+    currentPosition = bufferEnd;
+
+    updatePosition();
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * Jump backwards
+ * ---------------------------------------------------------
+ */
+
+function jumpBack(seconds)
+{
+    currentPosition =
+        Math.max(
+            bufferStart,
+            currentPosition - seconds
+        );
+
+    updatePosition();
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * Update periodically
+ * ---------------------------------------------------------
+ */
+
+setInterval(
+    updateBuffer,
+    1000
+);
+
+updateBuffer();
+
+</script>
+
 </body>
+
 </html>

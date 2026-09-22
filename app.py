@@ -1,78 +1,337 @@
 import os
-from flask import Flask, render_template, send_from_directory, jsonify, abort
+import time
+import threading
+from pathlib import Path
+
+import cv2
+from flask import Flask, Response, jsonify, render_template, request
+
+
+# ============================================================
+# Configuration
+# ============================================================
+
+VIDEO_FILE = "test.mkv"
+BUFFER_DIR = Path("buffer")
+
+# How long each DVR segment should be.
+SEGMENT_LENGTH = 10
+
+# Maximum amount of segments retained.
+# 180 * 10 seconds = 30 minutes.
+MAX_SEGMENTS = 180
+
+# Simulated input FPS.
+# Set to None to use the FPS reported by OpenCV.
+SIMULATED_FPS = None
+
+# JPEG quality used for the internal DVR.
+JPEG_QUALITY = 85
+
+
+# ============================================================
+# Flask
+# ============================================================
 
 app = Flask(__name__)
 
-# --- Configuration ---------------------------------------------------------
-
-RECORDINGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
-ALLOWED_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov", ".avi"}
-
-# Link to AV input stream
-DEFAULT_STREAM_URL = "udp://127.0.0.1:1234"
-
-os.makedirs(RECORDINGS_DIR, exist_ok=True)
+BUFFER_DIR.mkdir(exist_ok=True)
 
 
-# --- Helpers -----------------------------------------------------------------
+# ============================================================
+# Shared DVR state
+# ============================================================
 
-def human_size(num_bytes: int) -> str:
-    """Format a byte count as a human-readable string (KB/MB/GB)."""
-    size = float(num_bytes)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if size < 1024 or unit == "TB":
-            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
+class Segment:
+    def __init__(self, filename, start, duration, quality):
+        self.filename = filename
+        self.start = start
+        self.duration = duration
+        self.quality = quality
+
+    def to_dict(self):
+        return {
+            "filename": self.filename,
+            "start": self.start,
+            "duration": self.duration,
+            "quality": self.quality,
+        }
 
 
-def list_recordings():
-    """Return a list of dicts: name, size (bytes), size_human, for each video file."""
-    files = []
-    for entry in sorted(os.listdir(RECORDINGS_DIR)):
-        path = os.path.join(RECORDINGS_DIR, entry)
-        if not os.path.isfile(path):
-            continue
-        ext = os.path.splitext(entry)[1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            continue
-        size = os.path.getsize(path)
-        files.append({
-            "name": entry,
-            "size": size,
-            "size_human": human_size(size),
+segments = []
+
+buffer_lock = threading.Lock()
+
+# Relative DVR time.
+dvr_time = 0.0
+
+running = True
+
+
+# ============================================================
+# Fake signal evaluator
+# ============================================================
+
+def evaluate_frame(frame, frame_number):
+    """
+    Fake signal-quality evaluator.
+
+    Returns a value from 0.0 to 1.0.
+
+    Replace this later with the actual signal evaluator.
+    """
+
+    # --------------------------------------------------------
+    # Test mode 1: constant quality
+    # --------------------------------------------------------
+
+    # return 1.0
+
+
+    # --------------------------------------------------------
+    # Test mode 2: slowly changing quality
+    # --------------------------------------------------------
+
+    # import math
+    # return (math.sin(frame_number / 100.0) + 1) / 2
+
+
+    # --------------------------------------------------------
+    # Test mode 3: deliberately create bad sections
+    # --------------------------------------------------------
+
+    position = (frame_number // 150) % 4
+
+    if position == 0:
+        return 1.0       # green
+
+    if position == 1:
+        return 0.75      # green/yellow
+
+    if position == 2:
+        return 0.4       # yellow
+
+    return 0.1           # red
+
+
+# ============================================================
+# DVR capture
+# ============================================================
+
+def capture_loop():
+
+    global dvr_time
+
+    cap = cv2.VideoCapture(VIDEO_FILE)
+
+    if not cap.isOpened():
+        print(f"ERROR: Could not open {VIDEO_FILE}")
+        return
+
+    source_fps = cap.get(cv2.CAP_PROP_FPS)
+
+    if not source_fps or source_fps <= 0:
+        source_fps = 30
+
+    fps = SIMULATED_FPS or source_fps
+
+    print(f"Source FPS: {source_fps}")
+    print(f"Simulation FPS: {fps}")
+
+    frame_interval = 1.0 / fps
+
+    frame_number = 0
+
+    while running:
+
+        # ----------------------------------------------------
+        # Create a new segment
+        # ----------------------------------------------------
+
+        segment_start = dvr_time
+
+        filename = f"{int(segment_start):010d}.avi"
+        path = BUFFER_DIR / filename
+
+        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+
+        writer = cv2.VideoWriter(
+            str(path),
+            fourcc,
+            fps,
+            (
+                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            ),
+        )
+
+        if not writer.isOpened():
+            print("ERROR: Could not create segment")
+            return
+
+        qualities = []
+
+        segment_frames = int(fps * SEGMENT_LENGTH)
+
+        print(f"Recording {filename}")
+
+        segment_start_real = time.perf_counter()
+
+        for _ in range(segment_frames):
+
+            frame_start = time.perf_counter()
+
+            ret, frame = cap.read()
+
+            if not ret:
+
+                # Loop source video.
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+                ret, frame = cap.read()
+
+                if not ret:
+                    print("ERROR: Could not read frame")
+                    break
+
+            # ------------------------------------------------
+            # Fake signal evaluator
+            # ------------------------------------------------
+
+            quality = evaluate_frame(frame, frame_number)
+
+            qualities.append(quality)
+
+            # ------------------------------------------------
+            # Store frame
+            # ------------------------------------------------
+
+            writer.write(frame)
+
+            frame_number += 1
+
+            # ------------------------------------------------
+            # Advance relative DVR clock
+            # ------------------------------------------------
+
+            dvr_time += frame_interval
+
+            # ------------------------------------------------
+            # Real-time playback
+            # ------------------------------------------------
+
+            elapsed = time.perf_counter() - frame_start
+            delay = frame_interval - elapsed
+
+            if delay > 0:
+                time.sleep(delay)
+
+        writer.release()
+
+        actual_duration = dvr_time - segment_start
+
+        if qualities:
+            average_quality = sum(qualities) / len(qualities)
+        else:
+            average_quality = 0
+
+        segment = Segment(
+            filename,
+            segment_start,
+            actual_duration,
+            average_quality,
+        )
+
+        # ----------------------------------------------------
+        # Add segment to buffer
+        # ----------------------------------------------------
+
+        with buffer_lock:
+
+            segments.append(segment)
+
+            # ------------------------------------------------
+            # Delete old segments
+            # ------------------------------------------------
+
+            while len(segments) > MAX_SEGMENTS:
+
+                old = segments.pop(0)
+
+                try:
+                    (BUFFER_DIR / old.filename).unlink()
+                except FileNotFoundError:
+                    pass
+
+
+# ============================================================
+# API
+# ============================================================
+
+@app.route("/api/buffer")
+def buffer_info():
+
+    with buffer_lock:
+
+        if segments:
+            start = segments[0].start
+            end = segments[-1].start + segments[-1].duration
+        else:
+            start = 0
+            end = 0
+
+        return jsonify({
+            "start": start,
+            "end": end,
+            "live": end,
+            "duration": end - start,
+            "segments": [
+                s.to_dict()
+                for s in segments
+            ]
         })
-    return files
 
 
-# --- Routes --------------------------------------------------------------
+@app.route("/api/segment/<filename>")
+def segment(filename):
 
-@app.route("/")
-def index():
-    return render_template(
-        "index.html",
-        files=list_recordings(),
-        default_stream_url=DEFAULT_STREAM_URL,
+    path = BUFFER_DIR / filename
+
+    if not path.exists():
+        return "Segment not found", 404
+
+    # OpenCV video isn't ideal for browser playback directly.
+    # This endpoint is mainly here for debugging.
+    return Response(
+        path.read_bytes(),
+        mimetype="video/x-msvideo"
     )
 
 
-@app.route("/api/files")
-def api_files():
-    """JSON list of files, used by the front-end refresh button."""
-    return jsonify(list_recordings())
+# ============================================================
+# UI
+# ============================================================
+
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 
-@app.route("/recordings/<path:filename>")
-def serve_recording(filename):
-    """Stream a video file. send_from_directory supports HTTP Range
-    requests by default (conditional=True), which is what lets the
-    browser seek/scrub through the video."""
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        abort(404)
-    return send_from_directory(RECORDINGS_DIR, filename, conditional=True)
-
+# ============================================================
+# Main
+# ============================================================
 
 if __name__ == "__main__":
-    # host=0.0.0.0 so it's reachable from other devices on the network/AP
-    app.run(host="0.0.0.0", port=5000, debug=True)
+
+    capture_thread = threading.Thread(
+        target=capture_loop,
+        daemon=True
+    )
+
+    capture_thread.start()
+
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        threaded=True
+    )
