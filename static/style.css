@@ -1,137 +1,72 @@
-* {
-    box-sizing: border-box;
+:root {
+  --bg: #d9dfe2;
+  --panel: #eef1f2;
+  --ink: #14212b;
+  --soft: #4b5b66;
+  --line: #aab7be;
+  --signal: #d9412b;
+  --bezel: #0d1317;
 }
-
+* { box-sizing: border-box; }
 body {
-    margin: 0;
-    background: #111;
-    color: #eee;
-    font-family: Arial, sans-serif;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.45 "Bahnschrift", "DIN Alternate", "Avenir Next Condensed", "Segoe UI", system-ui, sans-serif;
 }
+main { max-width: 880px; margin: 0 auto; padding: 16px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.01em; }
+h2 { margin: 24px 0 8px; font-size: 1.05rem; }
+#status { margin: 0; color: var(--soft); font-variant-numeric: tabular-nums; }
 
-#container {
-    width: min(1000px, 95vw);
-    margin: 30px auto;
+.monitor { position: relative; margin-top: 14px; padding: 10px; background: var(--bezel); border-radius: 4px; }
+.screen { position: relative; width: 100%; aspect-ratio: var(--ar, 3 / 2); background: #000; }
+.screen img, .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.badge {
+  position: absolute; left: 20px; top: 20px; padding: 2px 9px;
+  background: var(--signal); color: #fff; font-weight: 700; font-size: 0.85rem; border-radius: 2px;
 }
+.badge.review { background: var(--panel); color: var(--ink); }
+.badge.lost { background: #f2b134; color: var(--ink); }
 
-#video-container {
-    background: black;
-    position: relative;
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.row.tight { margin-top: 8px; }
+label { color: var(--soft); }
+select {
+  font: inherit; padding: 8px 10px; color: var(--ink); background: var(--panel);
+  border: 1.5px solid var(--ink); border-radius: 3px;
 }
-
-#video {
-    width: 100%;
-    display: block;
-}
-
-#controls {
-    margin-top: 15px;
-}
-
-#timeline-container {
-    position: relative;
-    height: 45px;
-    margin-top: 10px;
-}
-
-#timeline {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 17px;
-    height: 10px;
-
-    background: #333;
-
-    cursor: pointer;
-}
-
-#quality-bar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 17px;
-    height: 10px;
-
-    pointer-events: none;
-
-    display: flex;
-}
-
-.quality-segment {
-    height: 100%;
-    flex: 1;
-}
-
-#position {
-    position: absolute;
-
-    top: 10px;
-
-    width: 4px;
-    height: 24px;
-
-    background: white;
-
-    transform: translateX(-2px);
-
-    pointer-events: none;
-}
-
-#live-marker {
-    position: absolute;
-
-    right: 0;
-
-    top: 5px;
-
-    height: 34px;
-
-    border-right: 2px solid white;
-
-    pointer-events: none;
-}
-
-#labels {
-    display: flex;
-    justify-content: space-between;
-
-    margin-top: 12px;
-
-    font-size: 13px;
-    color: #aaa;
-}
-
-#buttons {
-    margin-top: 15px;
-    display: flex;
-    gap: 10px;
-}
-
 button {
-    background: #333;
-    color: white;
-
-    border: 1px solid #555;
-
-    padding: 8px 15px;
-
-    cursor: pointer;
+  font: inherit; font-weight: 600; padding: 9px 14px; color: var(--ink); background: transparent;
+  border: 1.5px solid var(--ink); border-radius: 3px; cursor: pointer;
 }
+button.primary { background: var(--ink); color: #fff; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 
-button:hover {
-    background: #444;
+.timeline {
+  position: relative; height: 56px; margin-top: 14px; touch-action: none; cursor: ew-resize;
+  background-color: var(--panel); border: 1px solid var(--line);
+  background-image: repeating-linear-gradient(to right, var(--line) 0, var(--line) 1px, transparent 1px, transparent calc(100% / var(--secs, 60)));
 }
-
-#status {
-    margin-top: 15px;
-
-    display: flex;
-    justify-content: space-between;
-
-    color: #aaa;
+.clip {
+  position: absolute; top: 0; bottom: 0; background: rgba(20, 33, 43, 0.14);
+  border-left: 3px solid var(--ink); border-right: 3px solid var(--ink);
 }
+.head { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--signal); }
+.head::after { content: ""; position: absolute; top: 0; left: -4px; width: 10px; height: 10px; background: var(--signal); }
+#readout { margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+#readout span { color: var(--soft); }
 
-#signal {
-    font-weight: bold;
-}
+progress { width: 100%; height: 8px; margin-top: 12px; accent-color: var(--ink); }
+#msg { min-height: 1.4em; margin: 12px 0 0; color: var(--soft); }
+#msg.error { color: var(--signal); font-weight: 600; }
+[hidden] { display: none !important; }
+
+/* signal quality, drawn along the bottom of the timeline */
+.qstrip { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 12px; pointer-events: none; }
+#qreadout, #qsummary { margin: 4px 0 0; color: var(--soft); font-variant-numeric: tabular-nums; }
+#qreadout .q-good, #qsummary .q-good { color: #2c7a63; font-weight: 600; }
+#qreadout .q-fair, #qsummary .q-fair { color: #9a6a00; font-weight: 600; }
+#qreadout .q-poor, #qsummary .q-poor, #qreadout .q-lost, #qsummary .q-lost { color: var(--signal); font-weight: 600; }

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capture buffer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Capture buffer</h1>
+    <p id="status">Connecting to the capture device</p>
+  </header>
+
+  <section class="monitor" aria-label="Video">
+    <div class="screen" id="screen">
+      <img id="live" alt="Live video from the capture card">
+      <canvas id="review" hidden></canvas>
+    </div>
+    <div class="badge" id="badge">Live</div>
+  </section>
+
+  <section id="liveControls">
+    <div class="row">
+      <button class="primary" id="pauseBtn">Pause and review</button>
+      <label for="span">Load</label>
+      <select id="span">
+        <option value="0">the whole buffer</option>
+        <option value="30">the last 30 seconds</option>
+        <option value="15">the last 15 seconds</option>
+      </select>
+    </div>
+  </section>
+
+  <section id="reviewControls" hidden>
+    <h2>Review</h2>
+    <div class="timeline" id="timeline" tabindex="0" role="slider" aria-label="Playback position"
+         aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+      <canvas class="qstrip" id="qstrip" aria-hidden="true"></canvas>
+      <div class="clip" id="clip"></div>
+      <div class="head" id="head"></div>
+    </div>
+    <p id="readout"></p>
+    <p id="qreadout" hidden></p>
+    <p id="qsummary" hidden></p>
+    <div class="row">
+      <button id="backBtn" aria-label="Previous frame">Frame back</button>
+      <button class="primary" id="playBtn">Play</button>
+      <button id="fwdBtn" aria-label="Next frame">Frame forward</button>
+    </div>
+    <div class="row tight">
+      <button id="inBtn">Start clip here</button>
+      <button id="outBtn">End clip here</button>
+      <button id="wholeBtn">Use everything</button>
+      <button id="liveBtn">Back to live</button>
+    </div>
+
+    <h2>Save clip</h2>
+    <div class="row">
+      <label for="quality">MP4 quality</label>
+      <select id="quality">
+        <option value="1500000">Small file</option>
+        <option value="3000000" selected>Balanced</option>
+        <option value="6000000">High quality</option>
+      </select>
+      <button class="primary" id="mp4Btn">Save as MP4</button>
+      <button id="mjpegBtn">Save as MJPEG</button>
+    </div>
+    <p id="exportNote" hidden></p>
+    <progress id="bar" value="0" max="1" hidden></progress>
+  </section>
+
+  <p id="msg" role="status" aria-live="polite"></p>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

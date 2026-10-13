@@ -1,99 +1,118 @@
-# FPV-spectator-DVR
-This is a project that takes an AV input from my FPV goggles and records it internally while also allowing others around you to watch by connecting to its wifi hotspot connection.
+# Project is a work-in-progress! The app itself is mostly good but the deployment script is nott tested!
 
-# This project is currently unfinished and only contains the web interface for others to connect to
-Planned to be added soon:
- - actually run it on the pi instead of a dev enviroment
- - test and set up streaming from AV adapter and also recording it locally
- - make a better looking and more functional UI
+# MJPEG capture buffer
 
-## Hardware
-It uses an OrangePi Zero 2W (since i could not get a Raspberry device...) as the main brain of the device. It has a AV to USB adapter added to it, i used some random one that i could get locally but others might work similarly :)
+Rolling video buffer for a CVBS/MJPEG capture card, built for a headless Orange Pi Zero 2W
+(or any Linux board). The Pi never re-encodes video and never writes clips to disk.
 
-I also added a power circuit so that i can power both my goggles and this device from my powerbank with one cable. It takes in 9V via a USB-PD power board, then using 2 buck converters its adapted to 8.4v (fully charged 2S for goggles) and 5V (Pi, capture card, 5V cooling fan).
+- **ffmpeg** copies the card's MJPEG stream into a buffer held in RAM (`-c:v copy`, near-zero CPU).
+- **Live view** is a plain multipart MJPEG stream in an `<img>` tag.
+- **Pause and review** downloads the buffer to your phone/laptop. Scrubbing, frame stepping and
+  choosing the clip range all happen in the browser.
+- **Save as MP4** encodes H.264 in the browser (WebCodecs, hardware encoder where available),
+  so the Pi does none of the work. **Save as MJPEG** just joins the frames, works everywhere.
 
-On the Pi itself i didn't want to use the external ports so i connected the power to the GPIO pin array and the USB pins to the 24pin expansion connector, both USB ports and the HDMI are only used for first setup.
+## Setup
 
-The 5V fan is salvaged from an old laptop, i run it at full speed without using the control pins.
+    sudo ./setup.sh                    # installs packages, makes the certificate, starts on boot
+    sudo AP_IP=10.0.0.1 ./setup.sh     # if your access point is not 192.168.4.1
 
+Open `https://<ap-ip>:8443` from a device on the Pi's access point and click through the
+certificate warning once. Without `cert.pem`/`key.pem` the app serves plain HTTP: everything works
+except Save as MP4, because browsers only allow WebCodecs on secure origins.
 
-## Recordings File Manager + Player
+Change settings in `config.env`, then `sudo systemctl restart mjpeg-review`.
+Logs: `journalctl -u mjpeg-review -f`. To run by hand instead:
+`set -a; . ./config.env; set +a; python3 app.py`
 
-Simple Flask app: top half is a video player, bottom half is a scrollable
-list of files (name + size) pulled from a `recordings/` folder. A "Live
-Stream" button is wired up as a placeholder for a default video source.
+## Files
 
-### Layout
+| File | Job |
+|---|---|
+| `app.py` | Flask server and ffmpeg capture |
+| `static/index.html` | page structure |
+| `static/style.css` | styling |
+| `static/app.js` | live view, review, MP4/MJPEG export |
+| `static/quality.js` | signal quality evaluator (runs in the browser) |
+| `static/reference.json` | what a clean OSD looks like (made by `tools/build_reference.py`) |
+| `tools/build_reference.py` | builds `reference.json` from a clip with a good signal |
+| `tests/test_quality.mjs` | checks the evaluator against a clip and synthetic damage |
+| `config.env` | settings read by the service |
+| `setup.sh`, `gen-cert.sh` | installation and certificate |
 
-```
-videofm/
-  app.py                 # Flask app
-  requirements.txt
-  templates/index.html
-  static/style.css
-  recordings/             # put your .mp4/.webm/.mkv/.mov/.avi files here
-  deploy/
-    setup_ap.sh           # turns the Pi into a WiFi AP + installs the systemd service
-    flaskapp.service       # systemd unit for the Flask app
-```
+## Settings (environment variables)
 
-### Run locally
+These live in `config.env`.
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-mkdir -p recordings   # already created; drop video files in here
-python app.py
-```
+| Variable | Default | Meaning |
+|---|---|---|
+| VIDEO_DEVICE | /dev/video0 | capture card |
+| VIDEO_SIZE | 720x576 | must be a size the card offers as MJPEG |
+| VIDEO_FPS | 25 | 25 for PAL, 30 for NTSC |
+| BUFFER_SECONDS | 60 | rolling window length |
+| MAX_BUFFER_MB | 150 | hard RAM cap, whichever limit is hit first trims the buffer |
+| PORT | 8443 | |
 
-Visit `http://<device-ip>:5000/`.
+Check what your card offers with `v4l2-ctl -d /dev/video0 --list-formats-ext`.
 
-### Default / live stream placeholder
+## Signal loss
 
-In `app.py`, set:
+If the AV signal drops, ffmpeg either exits with an error or stays alive without delivering frames.
+Both are handled: a watchdog restarts ffmpeg after `STALL_SECONDS` without frames, and restarts back
+off (2 s up to 15 s) while the card keeps failing. The page shows "No signal", and the footage from
+before the loss stays in the buffer so you can still review and save it. The dead time is cut out of
+the buffer's timeline, so a clip that spans a loss plays straight through and exports at the right speed.
+Some cards keep sending flat grey frames when the signal is gone; the signal quality check below catches that as "No picture".
 
-```python
-DEFAULT_STREAM_URL = "https://your-stream-url/stream.m3u8"
-```
+## Signal quality (OSD check)
 
-Until you set this, the "Live Stream" button stays disabled. A common way
-to get an actual live URL from a Pi camera later: run `mediamtx` (or
-`ffmpeg`) on the Pi to re-stream the camera as RTSP/HLS, then point
-`DEFAULT_STREAM_URL` at that.
+The OSD is drawn onto the video by the flight controller, so it crosses the same radio link and
+capture card as the picture, but we know exactly what it should look like. The two vertical dotted
+lines never change, so the browser compares them with a reference and scores the signal 0 to 100:
 
-### Deploying to a headless Pi as an Access Point + setup page
+| Measurement | Rises or falls when |
+|---|---|
+| contrast of the dots against their dark outline | the picture is blurred, dim or gone |
+| jitter, how far each dot wanders sideways | horizontal sync trouble (line tearing), noise |
+| noise, grain on the white dots | weak signal, snow |
+| shift, how far the whole OSD has moved | the picture is displaced |
 
-1. Copy the whole `videofm/` folder to the Pi (e.g. `/home/pi/videofm`).
-2. On the Pi:
-   ```bash
-   cd /home/pi/videofm
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-3. Edit `deploy/flaskapp.service` if your username or install path differ
-   from `pi` / `/home/pi/videofm`.
-4. Edit the config block at the top of `deploy/setup_ap.sh` (SSID,
-   password, country code, etc).
-5. Run the setup script:
-   ```bash
-   sudo bash deploy/setup_ap.sh
-   sudo reboot
-   ```
-6. After reboot, connect to the Pi's WiFi network (SSID/password from the
-   script), then browse to `http://192.168.4.1:5000/`.
+Labels: Good 85 and up, Fair 60 and up, Poor below that. "No picture" means a flat screen (what many
+cards send with no signal). "No OSD" means the OSD cannot be read: heavy blur, or the OSD is switched off.
 
-### Note on Raspberry Pi OS Bookworm
+Where it shows: the live badge and status line (checked twice a second), a colour strip along the
+bottom of the review timeline, and a readout for the frame under the playhead. All of this runs in
+your browser, so the Pi does no extra work. With no `static/reference.json` the feature stays off.
 
-Bookworm uses NetworkManager instead of `dhcpcd`. If `deploy/setup_ap.sh`
-doesn't apply cleanly (no `dhcpcd.conf`/`systemctl status dhcpcd`), create
-the hotspot with `nmcli` instead and skip the dhcpcd/hostapd/dnsmasq steps:
+**Making the reference.** The one in the package was built from the 720x576 test clip, which had been
+converted to H.264. Build your own from the same card and settings the app uses:
 
-```bash
-sudo nmcli device wifi hotspot ifname wlan0 ssid "PiVideoSetup" password "changeme123"
-```
+1. With a clean signal and the OSD visible, record a few seconds and use **Save as MJPEG**.
+2. On a PC: `pip install numpy opencv-python-headless`, then
+   `python3 tools/build_reference.py clip.mjpeg`
+3. Open `reference-preview.png`: both dotted lines should have a box around every dot.
+4. Copy `static/reference.json` to the Pi (reload the page, no restart needed).
 
-You'd still want the `flaskapp.service` systemd unit installed so the app
-starts on boot — that part of the script is independent of the networking
-approach.
+Rebuild it if you change the OSD layout, the card, or the video size (`VIDEO_SIZE` must match the
+reference, otherwise the check switches itself off).
+
+**Tuning.** The thresholds are in `QUALITY` at the top of `static/quality.js`. They were set from one
+clean clip and synthetic damage (noise, tearing, blur, shifts, blackouts), not from real weak-signal
+footage. Record some real bad signal, look at what the strip says, and adjust.
+
+**Testing without the card.** `TEST_FILE=clip.mp4 python3 app.py` plays a video in a loop as if it
+were the capture card (MJPEG files are used as they are, anything else is converted).
+`node tests/test_quality.mjs clip.mp4` runs the evaluator against that clip and synthetic damage.
+
+## Notes
+
+- State lives in one process, so run it as-is (`python3 app.py`), not with several gunicorn workers.
+- Exported files are only as smooth as the capture: frame timing is derived from the measured
+  capture rate, so an unstable USB connection shows up as a slightly wrong playback speed.
+- If frames look broken in the browser, some UVC cards send JPEGs without Huffman tables.
+  Try adding `"-bsf:v", "mjpeg2jpeg"` to the ffmpeg command in `capture_loop()`.
+- Interlaced CVBS shows combing on motion. Deinterlacing would need re-encoding on the Pi,
+  so it is deliberately left out.
+- `static/vendor/mp4-muxer.mjs` is mp4-muxer 5.2.2 (MIT), bundled so the page works with no internet
+  on the Pi's access point.
+- Everything in the buffer is lost when the app restarts. That is intentional.
