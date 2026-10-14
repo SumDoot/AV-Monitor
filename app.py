@@ -26,24 +26,22 @@ import time
 
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
-# set to True to run on the Pi using the capture device
-# set to False to use the test file instead of a capture device 
-RUN_MODE = False  
-
 # Some systems serve .mjs as text/plain, which browsers refuse for ES modules.
 mimetypes.add_type("text/javascript", ".mjs")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-DEVICE = os.environ.get("VIDEO_DEVICE", "/dev/video1") if RUN_MODE else os.path.join(HERE, "test.mkv")
+RUN_MODE = True
+
+DEVICE = os.environ.get("VIDEO_DEVICE", "/dev/video1")
 SIZE = os.environ.get("VIDEO_SIZE", "720x576")
 FPS = int(os.environ.get("VIDEO_FPS", "25"))
 BUFFER_SECONDS = int(os.environ.get("BUFFER_SECONDS", "60"))
 MAX_BUFFER_MB = int(os.environ.get("MAX_BUFFER_MB", "150"))
 PORT = int(os.environ.get("PORT", "8443"))
-STALL_SECONDS = float(os.environ.get("STALL_SECONDS", "5"))     # no frames for this long: restart ffmpeg
-SIGNAL_TIMEOUT = float(os.environ.get("SIGNAL_TIMEOUT", "2"))   # no frames for this long: report "no signal"
-TEST_FILE = os.environ.get("TEST_FILE", "")                      # play this video in a loop instead of the capture card
+STALL_SECONDS = float(os.environ.get("STALL_SECONDS", "5"))             # no frames for this long: restart ffmpeg
+SIGNAL_TIMEOUT = float(os.environ.get("SIGNAL_TIMEOUT", "2"))           # no frames for this long: report "no signal"
+TEST_FILE = os.environ.get("TEST_FILE", os.path.join(HERE, "test.mkv")) # play this video in a loop instead of the capture card
 CERT = os.environ.get("TLS_CERT", os.path.join(HERE, "cert.pem"))
 KEY = os.environ.get("TLS_KEY", os.path.join(HERE, "key.pem"))
 
@@ -151,9 +149,9 @@ def capture_loop():
             "-i", DEVICE,
             "-c:v", "copy",          # no re-encoding
             "-f", "mjpeg", "pipe:1",
-        ] if RUN_MODE else [
+        ] if RUN_MODE or os.environ.get("TEST_FILE") else [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-re", "-stream_loop", "-1", "-i", DEVICE,
+            "-re", "-stream_loop", "-1", "-i", TEST_FILE,
             "-c:v", "copy",          # no re-encoding
             "-f", "mjpeg", "pipe:1",
         ]

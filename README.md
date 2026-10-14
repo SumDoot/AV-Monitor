@@ -1,4 +1,4 @@
-# Project is a work-in-progress! The app itself is mostly good but the deployment script is nott tested!
+## Untested on real hardware, only in testing mode!
 
 # MJPEG capture buffer
 
@@ -15,11 +15,9 @@ Rolling video buffer for a CVBS/MJPEG capture card, built for a headless Orange 
 ## Setup
 
     sudo ./setup.sh                    # installs packages, makes the certificate, starts on boot
-    sudo AP_IP=10.0.0.1 ./setup.sh     # if your access point is not 192.168.4.1
 
-Open `https://<ap-ip>:8443` from a device on the Pi's access point and click through the
-certificate warning once. Without `cert.pem`/`key.pem` the app serves plain HTTP: everything works
-except Save as MP4, because browsers only allow WebCodecs on secure origins.
+Open `https://192.168.4.1:8443` from a device on the Pi's access point and click through the
+certificate warning once.
 
 Change settings in `config.env`, then `sudo systemctl restart mjpeg-review`.
 Logs: `journalctl -u mjpeg-review -f`. To run by hand instead:
@@ -30,12 +28,8 @@ Logs: `journalctl -u mjpeg-review -f`. To run by hand instead:
 | File | Job |
 |---|---|
 | `app.py` | Flask server and ffmpeg capture |
-| `static/index.html` | page structure |
-| `static/style.css` | styling |
-| `static/app.js` | live view, review, MP4/MJPEG export |
-| `static/quality.js` | signal quality evaluator (runs in the browser) |
-| `static/reference.json` | what a clean OSD looks like (made by `tools/build_reference.py`) |
-| `tools/build_reference.py` | builds `reference.json` from a clip with a good signal |
+| `static/` | Web functionality |
+| `tools/build_reference.py` | builds OSD reference from a clip with a good signal |
 | `tests/test_quality.mjs` | checks the evaluator against a clip and synthetic damage |
 | `config.env` | settings read by the service |
 | `setup.sh`, `gen-cert.sh` | installation and certificate |
@@ -46,14 +40,14 @@ These live in `config.env`.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| VIDEO_DEVICE | /dev/video0 | capture card |
+| VIDEO_DEVICE | /dev/video1 | capture card |
 | VIDEO_SIZE | 720x576 | must be a size the card offers as MJPEG |
-| VIDEO_FPS | 25 | 25 for PAL, 30 for NTSC |
-| BUFFER_SECONDS | 60 | rolling window length |
-| MAX_BUFFER_MB | 150 | hard RAM cap, whichever limit is hit first trims the buffer |
+| VIDEO_FPS | 30 | 25 for PAL, 30 for NTSC |
+| BUFFER_SECONDS | 600 | rolling window length |
+| MAX_BUFFER_MB | 500 | hard RAM cap, whichever limit is hit first trims the buffer |
 | PORT | 8443 | |
 
-Check what your card offers with `v4l2-ctl -d /dev/video0 --list-formats-ext`.
+Check what your card offers with `v4l2-ctl -d /dev/video1 --list-formats-ext`.
 
 ## Signal loss
 
@@ -98,21 +92,7 @@ reference, otherwise the check switches itself off).
 
 **Tuning.** The thresholds are in `QUALITY` at the top of `static/quality.js`. They were set from one
 clean clip and synthetic damage (noise, tearing, blur, shifts, blackouts), not from real weak-signal
-footage. Record some real bad signal, look at what the strip says, and adjust.
+footage.
 
-**Testing without the card.** `TEST_FILE=clip.mp4 python3 app.py` plays a video in a loop as if it
+**Testing without the card.** `TEST_FILE=test.mkv python3 app.py` or setting `RUN_MODE = False` plays a video in a loop as if it
 were the capture card (MJPEG files are used as they are, anything else is converted).
-`node tests/test_quality.mjs clip.mp4` runs the evaluator against that clip and synthetic damage.
-
-## Notes
-
-- State lives in one process, so run it as-is (`python3 app.py`), not with several gunicorn workers.
-- Exported files are only as smooth as the capture: frame timing is derived from the measured
-  capture rate, so an unstable USB connection shows up as a slightly wrong playback speed.
-- If frames look broken in the browser, some UVC cards send JPEGs without Huffman tables.
-  Try adding `"-bsf:v", "mjpeg2jpeg"` to the ffmpeg command in `capture_loop()`.
-- Interlaced CVBS shows combing on motion. Deinterlacing would need re-encoding on the Pi,
-  so it is deliberately left out.
-- `static/vendor/mp4-muxer.mjs` is mp4-muxer 5.2.2 (MIT), bundled so the page works with no internet
-  on the Pi's access point.
-- Everything in the buffer is lost when the app restarts. That is intentional.
