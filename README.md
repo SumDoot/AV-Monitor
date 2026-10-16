@@ -14,15 +14,15 @@ Rolling video buffer for a CVBS/MJPEG capture card, built for a headless Orange 
 
 ## Setup
 
-    sudo ./setup.sh                    # installs packages, makes the certificate, starts on boot
+Makes file executable:
+`chmod u+x setup.sh` 
+Installs packages, sets up AP network, adds autorun service.
+`sudo ./setup.sh`
 
-Open `https://192.168.4.1:8443` from a device on the Pi's access point and click through the
+Conmnect to the `FPV-DVR` AP, open `https://10.42.0.1:8443` or `https://fpv-dvr.lan:8443` from a device on the Pi's access point and click through the
 certificate warning once.
 
-Change settings in `config.env`, then `sudo systemctl restart mjpeg-review`.
-Logs: `journalctl -u mjpeg-review -f`. To run by hand instead:
-`set -a; . ./config.env; set +a; python3 app.py`
-
+Change settings in `config.env` if needed, then `sudo systemctl restart mjpeg-review`.`
 ## Files
 
 | File | Job |
@@ -33,7 +33,7 @@ Logs: `journalctl -u mjpeg-review -f`. To run by hand instead:
 | `tests/test_quality.mjs` | checks the evaluator against a clip and synthetic damage |
 | `config.env` | settings read by the service |
 | `setup.sh`, `gen-cert.sh` | installation and certificate |
-
+`
 ## Settings (environment variables)
 
 These live in `config.env`.
