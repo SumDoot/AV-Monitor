@@ -17,7 +17,7 @@ AP_IP="${AP_IP:-192.168.4.1}"            # the Pi's address on its own access po
 HOSTNAME_FOR_CERT="${HOSTNAME_FOR_CERT:-cam.local}"
 SERVICE_NAME="${SERVICE_NAME:-mjpeg-review}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-$USER}}"   # account the app runs as
-EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"     # e.g. "dnsmasq hostapd" if you set up the AP here later
+EXTRA_PACKAGES="${EXTRA_PACKAGES:-dnsmasq hostapd}"     # e.g. "dnsmasq hostapd" if you set up the AP here later
 # -------------------------------------------------------------------------------
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,9 +39,40 @@ echo "==> HTTPS certificate"
 if [[ -f "${APP_DIR}/cert.pem" && -f "${APP_DIR}/key.pem" ]]; then
   echo "    cert.pem and key.pem already exist, keeping them (delete both to regenerate)"
 else
-  (cd "${APP_DIR}" && ./gen-cert.sh "${AP_IP}" "${HOSTNAME_FOR_CERT}")
+  # Makes a self-signed certificate so browsers treat the page as a secure context
+  # (required for in-browser MP4 encoding).
+  set -euo pipefail
+  IP="${1:-10.42.0.1}"
+  HOST="${2:-fpv-dvr.lan}"
+  openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
+    -keyout key.pem -out cert.pem -subj "/CN=${HOST}" \
+    -addext "subjectAltName=DNS:${HOST},IP:${IP}" \
+    -addext "basicConstraints=CA:FALSE" \
+    -addext "extendedKeyUsage=serverAuth"
+  chmod 600 key.pem
+  echo "Wrote cert.pem and key.pem for ${HOST} / ${IP}"
 fi
 chown "${RUN_USER}": "${APP_DIR}/cert.pem" "${APP_DIR}/key.pem"
+
+
+echo "==> Network setup"
+nmcli connection add \
+  type wifi \
+  ifname wlan0 \
+  con-name FPV-DVR \
+  autoconnect yes \
+  ssid FPV-DVR
+nmcli connection modify FPV-DVR \
+  802-11-wireless.mode ap \
+  802-11-wireless.band a \
+  802-11-wireless.channel 36 \
+  ipv4.method shared \
+  ipv6.method disabled \
+  ipv4.addresses 10.42.0.1/24
+echo 'address=/fpv-dvr.lan/10.42.0.1' | \
+  tee /etc/NetworkManager/dnsmasq-shared.d/fpv-dvr.conf
+nmcli connection up FPV-DVR
+
 
 echo "==> Service ${SERVICE_NAME}"
 cat > "${UNIT}" <<UNIT_EOF
