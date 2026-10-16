@@ -17,7 +17,7 @@ AP_IP="${AP_IP:-192.168.4.1}"            # the Pi's address on its own access po
 HOSTNAME_FOR_CERT="${HOSTNAME_FOR_CERT:-cam.local}"
 SERVICE_NAME="${SERVICE_NAME:-mjpeg-review}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-$USER}}"   # account the app runs as
-EXTRA_PACKAGES="${EXTRA_PACKAGES:-dnsmasq-base hostapd iw}"     # e.g. "dnsmasq hostapd" if you set up the AP here later
+EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"     # e.g. "dnsmasq hostapd" if you set up the AP here later
 # -------------------------------------------------------------------------------
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,26 +31,6 @@ fi
 echo "==> Installing packages"
 apt-get update -qq
 apt-get install -y ffmpeg python3-flask openssl v4l-utils ${EXTRA_PACKAGES}
-
-echo "==> Setting up AP"
-nmcli connection add type wifi ifname wlan0 con-name orange_ap autoconnect yes ssid fpv
-nmcli connection modify orange_ap 802-11-wireless.mode ap 802-11-wireless.band a 802-11-wireless.channel 36 ipv4.method shared
-nmcli connection modify orange_ap wifi-sec.key-mgmt wpa-psk
-nmcli connection modify orange_ap wifi-sec.psk fpvVideo
-nmcli connection modify orange_ap ipv4.addresses "${AP_IP}/24"
-
-
-cat > "/etc/NetworkManager/dispatcher.d/99-set-tx-power" << EOF
-#!/bin/bash
-IFACE=$1
-ACTION=$2
-if [ "$IFACE" = "wlan0" ] && [ "$ACTION" = "up" ]; then
-    /usr/sbin/iw dev wlan0 set txpower fixed 0
-fi
-EOF
-
-chmod +x /etc/NetworkManager/dispatcher.d/99-set-tx-power
-nmcli connection up orange_ap
 
 echo "==> Letting ${RUN_USER} read the capture device"
 usermod -aG video "${RUN_USER}"
